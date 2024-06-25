@@ -161,3 +161,9 @@ cython_debug/
 
 # AzureML
 .azureml
+whisper_cpu_fp32.json
+whisper_cpu_inc_int8.json
+whisper_cpu_int8.json
+whisper_gpu_fp16.json
+whisper_gpu_fp32.json
+whisper_gpu_int8.json
