@@ -1,0 +1,136 @@
+{
+    "input_model": {
+        "type": "PyTorchModel",
+        "config": {
+            "model_script": "code/user_script.py",
+            "script_dir": "code",
+            "hf_config": {
+                "model_class": "WhisperForConditionalGeneration",
+                "model_name": "openai/whisper-small",
+                "components": [
+                    {
+                        "name": "encoder_decoder_init",
+                        "io_config": "get_encdec_io_config",
+                        "component_func": "get_encoder_decoder_init",
+                        "dummy_inputs_func": "encoder_decoder_init_dummy_inputs"
+                    },
+                    {
+                        "name": "decoder",
+                        "io_config": "get_dec_io_config",
+                        "component_func": "get_decoder",
+                        "dummy_inputs_func": "decoder_dummy_inputs"
+                    }
+                ],
+                "from_pretrained_args": {"attn_implementation": "eager"}
+            }
+        }
+    },
+    "systems": {
+        "local_system": {
+            "type": "LocalSystem",
+            "config": {
+                "accelerators": [
+                    {
+                        "device": "qnn",
+                        "execution_providers": ["QNNExecutionProvider"]
+                    }
+                ],
+                "providers": ["QNNExecutionProvider"],
+                "execution_providers": {
+                    "QNNExecutionProvider": {
+                        "library_path": "/home/cweber/source/Olive/examples/whisper_NPU/onnxruntime/build/Linux/Release/libQnnHtp.so"                    }
+                }
+            }
+        }
+    },
+    "evaluators": {
+        "common_evaluator": {
+            "metrics": [
+                {
+                    "name": "latency",
+                    "type": "latency",
+                    "sub_types": [
+                        {"name": "avg", "priority": 1}
+                    ],
+                    "user_config": {
+                        "user_script": "code/user_script.py",
+                        "script_dir": "code",
+                        "data_dir": "data",
+                        "dataloader_func": "whisper_dataloader",
+                        "func_kwargs": {
+                            "dataloader_func": {
+                                "model_name": "openai/whisper-small",
+                                "use_audio_decoder": true,
+                                "multilingual": true,
+                                "enable_timestamps": true
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "passes": {
+        "conversion": {
+            "type": "OnnxConversion",
+            "config": {"target_opset": 17},
+            "module_dependencies": ["onnxruntime", "onnx"]
+        },
+        "transformers_optimization": {
+            "type": "OrtTransformersOptimization",
+            "config": {
+                "optimization_options": {"use_multi_head_attention": true},
+                "use_gpu": false
+            },
+            "module_dependencies": ["onnxruntime", "torch"]
+        },
+        "qnn_conversion": {
+            "type": "QnnConversion",
+            "config": {
+                "target_device": "QNNDevice",
+                "quantization": {
+                    "per_channel": false,
+                    "reduce_range": false,
+                    "op_types_to_quantize": ["MatMul", "Gemm", "Gather"],
+                    "MatMulConstBOnly": false,
+                    "execution_providers": ["QNNExecutionProvider"]
+                },
+                "module_dependencies": ["onnxruntime", "onnx", "torch"]
+            }
+        },
+        "insert_beam_search": {
+            "type": "InsertBeamSearch",
+            "config": {
+                "use_forced_decoder_ids": true,
+                "use_logits_processor": true,
+                "fp16": false
+            },
+            "module_dependencies": ["onnxruntime", "torch"]
+        },
+        "prepost": {
+            "type": "AppendPrePostProcessingOps",
+            "config": {
+                "tool_command": "whisper",
+                "tool_command_args": {
+                    "model_name": "openai/whisper-small",
+                    "use_audio_decoder": true,
+                    "multilingual": true,
+                    "enable_timestamps": true
+                },
+                "target_opset": 17
+            },
+            "module_dependencies": ["onnxruntime", "torch"]
+        }
+    },
+    "engine": {
+        "log_severity_level": 0,
+        "host": "local_system",
+        "target": "local_system",
+        "evaluator": "common_evaluator",
+        "evaluate_input_model": false,
+        "clean_cache": false,
+        "cache_dir": "cache",
+        "output_dir": "models",
+        "output_name": "whisper_qnn_int8"
+    }
+}
