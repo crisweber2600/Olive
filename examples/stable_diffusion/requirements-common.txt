@@ -2,7 +2,7 @@ accelerate
 diffusers
 onnx
 pillow
-protobuf==3.20.3 # protobuf 4.x aborts with OOM when optimizing unet
+protobuf==4.25.8 # protobuf 4.x aborts with OOM when optimizing unet
 tabulate
 torch
 transformers
